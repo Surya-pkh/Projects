@@ -12,10 +12,11 @@ cat > lambda_function.py << 'EOF'
 import json
 import boto3
 import tempfile
-import yaml
 from kubernetes import client, config
 import zipfile
 import os
+import base64
+from botocore.signers import RequestSigner
 
 def lambda_handler(event, context):
     codepipeline = boto3.client('codepipeline')
@@ -64,6 +65,38 @@ def lambda_handler(event, context):
         return {"statusCode": 500, "body": f"Error: {str(e)}"}
 
 
+def get_eks_token(cluster_name, region):
+    session = boto3.session.Session()
+    client = session.client('eks', region_name=region)
+    service_id = client.meta.service_model.service_id
+
+    signer = RequestSigner(
+        service_id,
+        region,
+        'sts',
+        'v4',
+        session.get_credentials(),
+        session.events
+    )
+
+    params = {
+        'method': 'GET',
+        'url': 'https://sts.amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15',
+        'body': {},
+        'headers': {'x-k8s-aws-id': cluster_name},
+        'context': {}
+    }
+
+    signed_url = signer.generate_presigned_url(
+        params,
+        region_name=region,
+        expires_in=60,
+        operation_name=''
+    )
+
+    return 'k8s-aws-v1.' + base64.urlsafe_b64encode(signed_url.encode()).decode().rstrip('=')
+
+
 def update_eks_deployment(image_uri):
     try:
         region = "us-east-1"
@@ -74,42 +107,18 @@ def update_eks_deployment(image_uri):
         eks = boto3.client('eks', region_name=region)
         cluster_info = eks.describe_cluster(name=cluster_name)['cluster']
 
-        # Create kubeconfig dynamically
-        kubeconfig = {
-            "apiVersion": "v1",
-            "clusters": [{
-                "cluster": {
-                    "server": cluster_info['endpoint'],
-                    "certificate-authority-data": cluster_info['certificateAuthority']['data']
-                },
-                "name": "cluster"
-            }],
-            "contexts": [{
-                "context": {
-                    "cluster": "cluster",
-                    "user": "aws"
-                },
-                "name": "context"
-            }],
-            "current-context": "context",
-            "kind": "Config",
-            "users": [{
-                "name": "aws",
-                "user": {
-                    "exec": {
-                        "apiVersion": "client.authentication.k8s.io/v1beta1",
-                        "command": "aws",
-                        "args": ["eks", "get-token", "--cluster-name", cluster_name, "--region", region]
-                    }
-                }
-            }]
-        }
+        # Configure Kubernetes client directly
+        configuration = client.Configuration()
+        configuration.host = cluster_info['endpoint']
+        configuration.verify_ssl = True
+        configuration.ssl_ca_cert = tempfile.NamedTemporaryFile(delete=False).name
+        with open(configuration.ssl_ca_cert, 'w') as f:
+            f.write(base64.b64decode(cluster_info['certificateAuthority']['data']).decode())
 
-        # Save kubeconfig to a temp file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as tmp_kube:
-            yaml.dump(kubeconfig, tmp_kube)
-            tmp_kube.flush()
-            config.load_kube_config(tmp_kube.name)
+        token = get_eks_token(cluster_name, region)
+        configuration.api_key = {"authorization": "Bearer " + token}
+
+        client.Configuration.set_default(configuration)
 
         # Patch deployment image
         apps_v1 = client.AppsV1Api()
@@ -131,7 +140,6 @@ EOF
 cat > requirements.txt << 'EOF'
 boto3==1.26.137
 kubernetes==26.1.0
-PyYAML==6.0
 EOF
 
 #####################################
