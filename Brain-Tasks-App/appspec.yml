@@ -1,0 +1,19 @@
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::EKS::Service
+      Properties:
+        TaskDefinition: <TASK_DEFINITION>
+        LoadBalancer:
+          ContainerName: "brain-tasks-app"
+          ContainerPort: 3000
+Hooks:
+  - BeforeInstall:
+      - location: scripts/install_dependencies.sh
+        timeout: 300
+  - ApplicationStart:
+      - location: scripts/start_server.sh
+        timeout: 300
+  - ApplicationStop:
+      - location: scripts/stop_server.sh
+        timeout: 300
