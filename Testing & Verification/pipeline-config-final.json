@@ -1,0 +1,69 @@
+{
+  "pipeline": {
+    "name": "brain-tasks-pipeline",
+    "roleArn": "arn:aws:iam::391070786986:role/CodePipelineServiceRole",
+    "artifactStore": {
+      "type": "S3",
+      "location": "brain-tasks-pipeline-artifacts-1754767523"
+    },
+    "stages": [
+      {
+        "name": "Source",
+        "actions": [
+          {
+            "name": "SourceAction",
+            "actionTypeId": {
+              "category": "Source",
+              "owner": "AWS",
+              "provider": "CodeStarSourceConnection",
+              "version": "1"
+            },
+            "configuration": {
+              "ConnectionArn": "arn:aws:codestar-connections:us-east-1:391070786986:connection/060e2543-d2f6-4f0f-a820-4bf4cedab45c",
+              "FullRepositoryId": "Vennilavan12/Brain-Tasks-App",
+              "BranchName": "main"
+            },
+            "outputArtifacts": [{ "name": "SourceOutput" }]
+          }
+        ]
+      },
+      {
+        "name": "Build",
+        "actions": [
+          {
+            "name": "BuildAction",
+            "actionTypeId": {
+              "category": "Build",
+              "owner": "AWS",
+              "provider": "CodeBuild",
+              "version": "1"
+            },
+            "configuration": {
+              "ProjectName": "brain-tasks-build"
+            },
+            "inputArtifacts": [{ "name": "SourceOutput" }],
+            "outputArtifacts": [{ "name": "BuildOutput" }]
+          }
+        ]
+      },
+      {
+        "name": "Deploy",
+        "actions": [
+          {
+            "name": "DeployAction",
+            "actionTypeId": {
+              "category": "Invoke",
+              "owner": "AWS",
+              "provider": "Lambda",
+              "version": "1"
+            },
+            "configuration": {
+              "FunctionName": "brain-tasks-deploy"
+            },
+            "inputArtifacts": [{ "name": "BuildOutput" }]
+          }
+        ]
+      }
+    ]
+  }
+}
