@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Tasks App - CI/CD Pipeline Monitor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
+            backdrop-filter: blur(15px);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .header h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.3rem;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .pipeline-status {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .status-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .status-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            transition: all 0.3s ease;
+            transform: scale(0);
+        }
+        
+        .status-card:hover::before {
+            transform: scale(1);
+        }
+        
+        .status-card:hover {
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 25px 60px rgba(102, 126, 234, 0.4);
+        }
+        
+        .status-icon {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .status-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 5px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .status-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .pipeline-flow {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .pipeline-flow h3 {
+            color: #2196F3;
+            margin-bottom: 25px;
+            font-size: 1.8rem;
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        .flow-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        
+        .flow-stage {
+            flex: 1;
+            min-width: 150px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .stage-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stage-circle::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s;
+        }
+        
+        .stage-circle.active::before {
+            left: 100%;
+        }
+        
+        .stage-circle.success {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            animation: pulse 2s infinite;
+        }
+        
+        .stage-circle.failed {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            animation: shake 0.5s;
+        }
+        
+        .stage-circle.in-progress {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            animation: rotate 1s linear infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 10px 30px rgba(76, 175, 80, 0.3); }
+            50% { box-shadow: 0 15px 40px rgba(76, 175, 80, 0.5); }
+            100% { box-shadow: 0 10px 30px rgba(76, 175, 80, 0.3); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .stage-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .stage-subtitle {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        
+        .flow-arrow {
+            font-size: 2rem;
+            color: #2196F3;
+            animation: flow 2s ease-in-out infinite;
+        }
+        
+        @keyframes flow {
+            0%, 100% { transform: translateX(0); }
+            50% { transform: translateX(5px); }
+        }
+        
+        .monitoring-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        .monitor-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .monitor-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+        
+        .monitor-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+        }
+        
+        .monitor-card h4 {
+            color: #2196F3;
+            margin-bottom: 20px;
+            font-size: 1.4rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+        }
+        
+        .monitor-card h4::before {
+            content: '';
+            width: 6px;
+            height: 25px;
+            background: linear-gradient(135deg, #2196F3, #21CBF3);
+            border-radius: 3px;
+            margin-right: 12px;
+        }
+        
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+            transition: all 0.2s ease;
+        }
+        
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-row:hover {
+            background: rgba(33, 150, 243, 0.05);
+            padding-left: 10px;
+        }
+        
+        .metric-label {
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .metric-value {
+            color: #2196F3;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        
+        .logs-section {
+            background: #1a1a1a;
+            color: #00ff41;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 30px;
+            font-family: 'Courier New', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .logs-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            background: linear-gradient(90deg, #333, #444, #333);
+            border-radius: 15px 15px 0 0;
+        }
+        
+        .logs-header {
+            color: #00ff41;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px 10px;
+            border-left: 3px solid #00ff41;
+            background: rgba(0, 255, 65, 0.05);
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            color: white;
+            box-shadow: 0 8px 25px rgba(255, 152, 0, 0.3);
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            transform: translate(-50%, -50%);
+        }
+        
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn span {
+            position: relative;
+            z-index: 1;
+        }
+        
+        .real-time-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            height: 300px;
+        }
+        
+        .chart-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: blink 2s infinite;
+        }
+        
+        .status-success { background: #4CAF50; }
+        .status-warning { background: #FF9800; }
+        .status-error { background: #f44336; }
+        .status-info { background: #2196F3; }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        .quick-links {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        
+        .quick-link {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            color: #333;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+        
+        .quick-link:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: #667eea;
+            transform: translateY(-2px);
+        }
+        
+        @media (max-width: 768px) {
+            .pipeline-status {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .flow-container {
+                flex-direction: column;
+            }
+            
+            .flow-arrow {
+                transform: rotate(90deg);
+                margin: 10px 0;
+            }
+            
+            .real-time-metrics {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 CI/CD Pipeline Monitor</h1>
+            <p>Brain Tasks App - Real-time Pipeline & Application Monitoring</p>
+        </div>
+        
+        <div class="pipeline-status">
+            <div class="status-card">
+                <div class="status-icon">⚡</div>
+                <div class="status-title">Pipeline Status</div>
+                <div class="status-value" id="pipelineStatus">READY</div>
+            </div>
+            <div class="status-card">
+                <div class="status-icon">🏗️</div>
+                <div class="status-title">Last Build</div>
+                <div class="status-value" id="lastBuild">SUCCESS</div>
+            </div>
+            <div class="status-card">
+                <div class="status-icon">🚢</div>
+                <div class="status-title">Deployment</div>
+                <div class="status-value" id="deploymentStatus">LIVE</div>
+            </div>
+            <div class="status-card">
+                <div class="status-icon">💚</div>
+                <div class="status-title">Health</div>
+                <div class="status-value" id="healthStatus">100%</div>
+            </div>
+        </div>
+        
+        <div class="pipeline-flow">
+            <h3>🔄 Pipeline Execution Flow</h3>
+            <div class="flow-container">
+                <div class="flow-stage">
+                    <div class="stage-circle success" id="sourceStage">📁</div>
+                    <div class="stage-title">Source</div>
+                    <div class="stage-subtitle">GitHub</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-stage">
+                    <div class="stage-circle success" id="buildStage">🔨</div>
+                    <div class="stage-title">Build</div>
+                    <div class="stage-subtitle">CodeBuild</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-stage">
+                    <div class="stage-circle success" id="deployStage">🚀</div>
+                    <div class="stage-title">Deploy</div>
+                    <div class="stage-subtitle">Lambda → EKS</div>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-stage">
+                    <div class="stage-circle success" id="liveStage">🌍</div>
+                    <div class="stage-title">Live</div>
+                    <div class="stage-subtitle">Production</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="triggerPipeline()">
+                <span>🔄 Trigger Pipeline</span>
+            </button>
+            <button class="btn btn-success" onclick="checkHealth()">
+                <span>🔍 Health Check</span>
+            </button>
+            <button class="btn btn-warning" onclick="viewLogs()">
+                <span>📋 View Logs</span>
+            </button>
+        </div>
+        
+        <div class="real-time-metrics">
+            <div class="chart-container">
+                <div class="chart-title">Pipeline Execution Timeline</div>
+                <canvas id="pipelineChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">Application Health Metrics</div>
+                <canvas id="healthChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="monitoring-grid">
+            <div class="monitor-card">
+                <h4>📊 Infrastructure Status</h4>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>EKS Cluster
+                    </span>
+                    <span class="metric-value">brain-tasks-cluster</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>Pods Running
+                    </span>
+                    <span class="metric-value">2/2</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>Load Balancer
+                    </span>
+                    <span class="metric-value">Active</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-info"></span>Resource Usage
+                    </span>
+                    <span class="metric-value">45% CPU</span>
+                </div>
+            </div>
+            
+            <div class="monitor-card">
+                <h4>🔧 CI/CD Components</h4>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>CodePipeline
+                    </span>
+                    <span class="metric-value">Ready</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>CodeBuild
+                    </span>
+                    <span class="metric-value">Available</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>Lambda Deploy
+                    </span>
+                    <span class="metric-value">Configured</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-info"></span>Last Execution
+                    </span>
+                    <span class="metric-value">2 min ago</span>
+                </div>
+            </div>
+            
+            <div class="monitor-card">
+                <h4>📈 Performance Metrics</h4>
+                <div class="metric-row">
+                    <span class="metric-label">Response Time</span>
+                    <span class="metric-value">245ms</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Throughput</span>
+                    <span class="metric-value">1.2k req/min</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Error Rate</span>
+                    <span class="metric-value">0.01%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Availability</span>
+                    <span class="metric-value">99.95%</span>
+                </div>
+            </div>
+            
+            <div class="monitor-card">
+                <h4>🔔 Recent Alerts</h4>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>System Health
+                    </span>
+                    <span class="metric-value">All Clear</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-info"></span>Deployment
+                    </span>
+                    <span class="metric-value">Completed</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-success"></span>Security Scan
+                    </span>
+                    <span class="metric-value">Passed</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">
+                        <span class="status-indicator status-info"></span>Backup
+                    </span>
+                    <span class="metric-value">Scheduled</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="logs-section" id="logsSection">
+            <div class="logs-header">📋 Real-time Pipeline Logs</div>
+            <div id="logEntries">
+                <div class="log-entry">[2025-08-09 14:30:45] Pipeline brain-tasks-pipeline started successfully</div>
+                <div class="log-entry">[2025-08-09 14:31:12] Source stage completed - GitHub webhook received</div>
+                <div class="log-entry">[2025-08-09 14:31:45] CodeBuild project brain-tasks-build started</div>
+                <div class="log-entry">[2025-08-09 14:33:20] Docker image built and pushed to ECR</div>
+                <div class="log-entry">[2025-08-09 14:33:45] Lambda deployment function triggered</div>
+                <div class="log-entry">[2025-08-09 14:34:10] EKS deployment updated successfully</div>
+                <div class="log-entry">[2025-08-09 14:34:35] Health check passed - Application responding</div>
+                <div class="log-entry">[2025-08-09 14:35:00] Pipeline execution completed successfully ✅</div>
+            </div>
+        </div>
+        
+        <div class="quick-links">
+            <a href="https://console.aws.amazon.com/codesuite/codepipeline/pipelines/brain-tasks-pipeline/view" 
+               target="_blank" class="quick-link">🔗 AWS CodePipeline</a>
+            <a href="https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=BrainTasksApp-Pipeline" 
+               target="_blank" class="quick-link">📊 CloudWatch Dashboard</a>
+            <a href="http://a2da7193a0514444e9013360f99a0e39-1665746955.us-east-1.elb.amazonaws.com" 
+               target="_blank" class="quick-link">🌍 Live Application</a>
+            <a href="https://github.com/Vennilavan12/Brain-Tasks-App" 
+               target="_blank" class="quick-link">📂 GitHub Repository</a>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize charts
+        const pipelineCtx = document.getElementById('pipelineChart').getContext('2d');
+        const healthCtx = document.getElementById('healthChart').getContext('2d');
+        
+        // Pipeline execution timeline chart
+        const pipelineChart = new Chart(pipelineCtx, {
+            type: 'line',
+            data: {
+                labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+                datasets: [{
+                    label: 'Pipeline Executions',
+                    data: [2, 1, 3, 5, 2, 4],
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    borderWidth: 3,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(0,0,0,0.1)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Health metrics chart
+        const healthChart = new Chart(healthCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Healthy', 'Warning', 'Error'],
+                datasets: [{
+                    data: [95, 4, 1],
+                    backgroundColor: ['#4CAF50', '#FF9800', '#f44336'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Function to simulate pipeline trigger
+        function triggerPipeline() {
+            const stages = ['sourceStage', 'buildStage', 'deployStage', 'liveStage'];
+            const pipelineStatus = document.getElementById('pipelineStatus');
+            
+            pipelineStatus.textContent = 'RUNNING';
+            
+            // Reset all stages
+            stages.forEach(stage => {
+                document.getElementById(stage).className = 'stage-circle';
+            });
+            
+            // Simulate pipeline execution
+            stages.forEach((stage, index) => {
+                setTimeout(() => {
+                    const element = document.getElementById(stage);
+                    element.className = 'stage-circle in-progress';
+                    
+                    setTimeout(() => {
+                        element.className = 'stage-circle success';
+                        if (index === stages.length - 1) {
+                            pipelineStatus.textContent = 'SUCCESS';
+                            addLogEntry(`Pipeline execution completed successfully ✅`);
+                        }
+                    }, 2000);
+                }, index * 3000);
+            });
+        }
+        
+        // Function to perform health check
+        function checkHealth() {
+            const healthStatus = document.getElementById('healthStatus');
+            healthStatus.textContent = 'CHECKING...';
+            
+            setTimeout(() => {
+                const health = Math.random() > 0.1 ? '100%' : '95%';
+                healthStatus.textContent = health;
+                addLogEntry(`Health check completed - Status: ${health} healthy`);
+            }, 2000);
+        }
+        
+        // Function to view logs
+        function viewLogs() {
+            const logsSection = document.getElementById('logsSection');
+            logsSection.scrollIntoView({ behavior: 'smooth' });
+            addLogEntry('Log viewer opened - Showing recent pipeline activity');
+        }
+        
+        // Function to add log entries
+        function addLogEntry(message) {
+            const logEntries = document.getElementById('logEntries');
+            const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            const newEntry = document.createElement('div');
+            newEntry.className = 'log-entry';
+            newEntry.textContent = `[${timestamp}] ${message}`;
+            
+            logEntries.appendChild(newEntry);
+            logEntries.scrollTop = logEntries.scrollHeight;
+            
+            // Keep only last 20 entries
+            while (logEntries.children.length > 20) {
+                logEntries.removeChild(logEntries.firstChild);
+            }
+        }
+        
+        // Simulate real-time updates
+        function simulateRealTimeData() {
+            // Update metrics randomly
+            const metrics = {
+                responseTime: Math.floor(Math.random() * 100) + 200,
+                throughput: (Math.random() * 0.5 + 1.0).toFixed(1),
+                errorRate: (Math.random() * 0.02).toFixed(3),
+                cpuUsage: Math.floor(Math.random() * 20) + 40
+            };
+            
+            // Update charts data
+            if (Math.random() > 0.7) {
+                const newValue = Math.floor(Math.random() * 5) + 1;
+                pipelineChart.data.datasets[0].data.push(newValue);
+                pipelineChart.data.datasets[0].data.shift();
+                pipelineChart.update('none');
+            }
+            
+            // Occasionally add log entries
+            if (Math.random() > 0.8) {
+                const messages = [
+                    'Health check completed successfully',
+                    'Monitoring systems operational',
+                    'Application performance within normal parameters',
+                    'Security scan completed - no issues found',
+                    'Resource utilization optimized'
+                ];
+                addLogEntry(messages[Math.floor(Math.random() * messages.length)]);
+            }
+        }
+        
+        // Start real-time simulation
+        setInterval(simulateRealTimeData, 10000);
+        
+        // Initialize with some activity
+        setTimeout(() => {
+            addLogEntry('Monitoring dashboard initialized');
+            addLogEntry('Connected to pipeline brain-tasks-pipeline');
+            addLogEntry('Real-time monitoring active');
+        }, 1000);
+        
+        // Add loading states and hover effects
+        document.querySelectorAll('.btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
+        });
+        
+        // Add click animations to cards
+        document.querySelectorAll('.monitor-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.style.transform = 'translateY(-8px) scale(1.02)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 200);
+            });
+        });
+    </script>
+</body>
+</html>
