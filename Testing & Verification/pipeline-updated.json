@@ -18,12 +18,18 @@
               "provider": "CodeStarSourceConnection",
               "version": "1"
             },
+            "runOrder": 1,
             "configuration": {
+              "BranchName": "master",
               "ConnectionArn": "arn:aws:codestar-connections:us-east-1:391070786986:connection/5c99e54a-a1ea-4479-9852-c7b59dc8c232",
-              "FullRepositoryId": "Surya-pkh/Projects",
-              "BranchName": "main"
+              "FullRepositoryId": "Surya-pkh/Projects"
             },
-            "outputArtifacts": [{ "name": "SourceOutput" }]
+            "outputArtifacts": [
+              {
+                "name": "SourceOutput"
+              }
+            ],
+            "inputArtifacts": []
           }
         ]
       },
@@ -38,11 +44,20 @@
               "provider": "CodeBuild",
               "version": "1"
             },
+            "runOrder": 1,
             "configuration": {
               "ProjectName": "brain-tasks-build"
             },
-            "inputArtifacts": [{ "name": "SourceOutput" }],
-            "outputArtifacts": [{ "name": "BuildOutput" }]
+            "outputArtifacts": [
+              {
+                "name": "BuildOutput"
+              }
+            ],
+            "inputArtifacts": [
+              {
+                "name": "SourceOutput"
+              }
+            ]
           }
         ]
       },
@@ -57,13 +72,27 @@
               "provider": "Lambda",
               "version": "1"
             },
+            "runOrder": 1,
             "configuration": {
               "FunctionName": "brain-tasks-deploy"
             },
-            "inputArtifacts": [{ "name": "BuildOutput" }]
+            "outputArtifacts": [],
+            "inputArtifacts": [
+              {
+                "name": "BuildOutput"
+              }
+            ]
           }
         ]
       }
-    ]
+    ],
+    "version": 1,
+    "executionMode": "SUPERSEDED",
+    "pipelineType": "V2"
+  },
+  "metadata": {
+    "pipelineArn": "arn:aws:codepipeline:us-east-1:391070786986:brain-tasks-pipeline",
+    "created": "2025-08-09T19:42:30.540000+00:00",
+    "updated": "2025-08-09T19:42:30.540000+00:00"
   }
 }
