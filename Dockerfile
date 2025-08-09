@@ -4,7 +4,7 @@ FROM public.ecr.aws/nginx/nginx:alpine
 RUN rm -rf /usr/share/nginx/html/*
 
 # Copy your built files to nginx web root  
-COPY dist /usr/share/nginx/html
+COPY ./Brain-Tasks-App/dist /usr/share/nginx/html
 
 # Remove default nginx configuration
 RUN rm /etc/nginx/conf.d/default.conf
