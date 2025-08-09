@@ -2,46 +2,30 @@ version: 0.2
 
 env:
   variables:
-    AWS_DEFAULT_REGION: us-east-1
-    AWS_ACCOUNT_ID: 391070786986
     IMAGE_REPO_NAME: brain-tasks-app
     IMAGE_TAG: latest
-    EKS_CLUSTER_NAME: brain-tasks-cluster
+    AWS_DEFAULT_REGION: us-east-1
 
 phases:
   pre_build:
     commands:
       - echo Logging in to Amazon ECR...
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      - echo Setting up kubectl...
-      - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-      - chmod +x kubectl
-      - mv kubectl /usr/local/bin/
-      - aws eks update-kubeconfig --region $AWS_DEFAULT_REGION --name $EKS_CLUSTER_NAME
-      - echo Installing Node.js...
-      - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-      - apt-get install -y nodejs
 
   build:
     commands:
-      - echo Build started on `date`
-      - echo Installing frontend dependencies...
-      - npm install
-      - echo Building frontend project...
-      - npm run build
-      - echo Building the Docker image...
+      - echo Building Docker image...
       - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
 
   post_build:
     commands:
       - echo Build completed on `date`
-      - echo Creating deployment artifacts...
-      - printf '[{"name":"brain-tasks-app","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions.json
-      - cat imagedefinitions.json
-      - echo Tagging the Docker image...
+      - echo Tagging Docker image...
       - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
-      - echo Pushing the Docker image...
-      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG || echo "Push failed, continuing..."
+      - echo Pushing Docker image...
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - echo Writing imagedefinitions.json...
+      - printf '[{"name":"brain-tasks-app","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > imagedefinitions.json
 
 artifacts:
   files:
