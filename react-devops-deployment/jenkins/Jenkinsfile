@@ -8,33 +8,38 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
         KUBECONFIG_CREDENTIAL = credentials('kubeconfig')
         AWS_DEFAULT_REGION = 'us-west-2'
+        NAMESPACE = 'react-app'
     }
     
     stages {
         stage('Checkout') {
             steps {
-                echo '📥 Checking out source code...'
+                echo 'Checking out source code...'
                 checkout scm
             }
         }
         
         stage('Build Application') {
             steps {
-                echo '🔨 Building React application...'
-                dir('app') {
-                    sh '''
-                        npm ci
-                        npm run build
-                        echo "✅ Build completed successfully"
-                    '''
+                echo 'Building React application...'
+                dir('react-devops-deployment/app') {
+                    script {
+                        docker.image('node:18-alpine').inside {
+                            sh '''
+                                npm ci --silent
+                                npm run build
+                                echo "Build completed successfully"
+                            '''
+                        }
+                    }
                 }
             }
         }
         
         stage('Build Docker Image') {
             steps {
-                echo '🐳 Building Docker image...'
-                dir('app') {
+                echo 'Building Docker image...'
+                dir('react-devops-deployment/app') {
                     script {
                         def image = docker.build("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}")
                         docker.build("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest")
@@ -43,32 +48,9 @@ pipeline {
             }
         }
         
-        stage('Run Tests') {
-            steps {
-                echo '🧪 Running tests...'
-                dir('app') {
-                    sh '''
-                        # Run your tests here
-                        # npm test -- --coverage --watchAll=false
-                        echo "✅ Tests completed"
-                    '''
-                }
-            }
-        }
-        
-        stage('Security Scan') {
-            steps {
-                echo '🔒 Running security scan...'
-                sh '''
-                    # Add security scanning here (e.g., Trivy)
-                    echo "✅ Security scan completed"
-                '''
-            }
-        }
-        
         stage('Push to DockerHub') {
             steps {
-                echo '📤 Pushing to DockerHub...'
+                echo 'Pushing to DockerHub...'
                 script {
                     docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
                         def image = docker.image("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}")
@@ -81,23 +63,23 @@ pipeline {
         
         stage('Deploy to Kubernetes') {
             steps {
-                echo '🚀 Deploying to Kubernetes...'
-                withKubeConfig([credentialsId: 'kubeconfig']) {
+                echo 'Deploying to Kubernetes...'
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh '''
                         # Update image in deployment
-                        sed -i "s|DOCKERHUB_USERNAME|${DOCKERHUB_USERNAME}|g" kubernetes/deployment.yaml
+                        sed -i "s|DOCKERHUB_USERNAME|${DOCKERHUB_USERNAME}|g" react-devops-deployment/kubernetes/deployment.yaml
                         
                         # Apply Kubernetes manifests
-                        kubectl apply -f kubernetes/namespace.yaml
-                        kubectl apply -f kubernetes/configmap.yaml
-                        kubectl apply -f kubernetes/deployment.yaml
-                        kubectl apply -f kubernetes/service.yaml
+                        kubectl apply -f react-devops-deployment/kubernetes/namespace.yaml
+                        kubectl apply -f react-devops-deployment/kubernetes/configmap.yaml
+                        kubectl apply -f react-devops-deployment/kubernetes/deployment.yaml
+                        kubectl apply -f react-devops-deployment/kubernetes/service.yaml
                         
                         # Wait for rollout
-                        kubectl rollout status deployment/react-app-deployment -n react-app --timeout=300s
+                        kubectl rollout status deployment/react-app-deployment -n ${NAMESPACE} --timeout=300s
                         
-                        # Get service URL
-                        kubectl get service react-app-service -n react-app
+                        # Get service status
+                        kubectl get service react-app-service -n ${NAMESPACE}
                     '''
                 }
             }
@@ -105,17 +87,13 @@ pipeline {
         
         stage('Health Check') {
             steps {
-                echo '🏥 Running health checks...'
-                withKubeConfig([credentialsId: 'kubeconfig']) {
+                echo 'Running health checks...'
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     sh '''
-                        # Wait for pods to be ready
-                        kubectl wait --for=condition=ready pod -l app=react-app -n react-app --timeout=300s
-                        
-                        # Get deployment status
-                        kubectl get deployment react-app-deployment -n react-app
-                        kubectl get pods -n react-app
-                        
-                        echo "✅ Health check completed"
+                        kubectl wait --for=condition=ready pod -l app=react-app -n ${NAMESPACE} --timeout=300s
+                        kubectl get deployment react-app-deployment -n ${NAMESPACE}
+                        kubectl get pods -n ${NAMESPACE}
+                        echo "Health check completed"
                     '''
                 }
             }
@@ -124,25 +102,15 @@ pipeline {
     
     post {
         always {
-            echo '🧹 Cleaning up...'
-            sh 'docker system prune -f'
+            echo 'Cleaning up...'
+            sh 'docker system prune -f || true'
             cleanWs()
         }
         success {
-            echo '✅ Pipeline completed successfully!'
-            emailext (
-                subject: "✅ Deployment Successful - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "The deployment was successful!\n\nBuild: ${env.BUILD_URL}",
-                to: "devops@company.com"
-            )
+            echo 'Pipeline completed successfully!'
         }
         failure {
-            echo '❌ Pipeline failed!'
-            emailext (
-                subject: "❌ Deployment Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "The deployment failed. Please check the build logs.\n\nBuild: ${env.BUILD_URL}",
-                to: "devops@company.com"
-            )
+            echo 'Pipeline failed!'
         }
     }
 }
