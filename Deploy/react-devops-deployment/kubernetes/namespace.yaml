@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: react-app
+  labels:
+    name: react-app
+    environment: production
