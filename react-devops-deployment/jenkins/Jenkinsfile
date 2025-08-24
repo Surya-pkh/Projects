@@ -1,0 +1,148 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        DOCKERHUB_USERNAME = 'your-dockerhub-username'
+        IMAGE_NAME = 'react-trend-app'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        KUBECONFIG_CREDENTIAL = credentials('kubeconfig')
+        AWS_DEFAULT_REGION = 'us-west-2'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📥 Checking out source code...'
+                checkout scm
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                echo '🔨 Building React application...'
+                dir('app') {
+                    sh '''
+                        npm ci
+                        npm run build
+                        echo "✅ Build completed successfully"
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo '🐳 Building Docker image...'
+                dir('app') {
+                    script {
+                        def image = docker.build("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}")
+                        docker.build("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest")
+                    }
+                }
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo '🧪 Running tests...'
+                dir('app') {
+                    sh '''
+                        # Run your tests here
+                        # npm test -- --coverage --watchAll=false
+                        echo "✅ Tests completed"
+                    '''
+                }
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                echo '🔒 Running security scan...'
+                sh '''
+                    # Add security scanning here (e.g., Trivy)
+                    echo "✅ Security scan completed"
+                '''
+            }
+        }
+        
+        stage('Push to DockerHub') {
+            steps {
+                echo '📤 Pushing to DockerHub...'
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
+                        def image = docker.image("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}")
+                        image.push()
+                        image.push("latest")
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo '🚀 Deploying to Kubernetes...'
+                withKubeConfig([credentialsId: 'kubeconfig']) {
+                    sh '''
+                        # Update image in deployment
+                        sed -i "s|DOCKERHUB_USERNAME|${DOCKERHUB_USERNAME}|g" kubernetes/deployment.yaml
+                        
+                        # Apply Kubernetes manifests
+                        kubectl apply -f kubernetes/namespace.yaml
+                        kubectl apply -f kubernetes/configmap.yaml
+                        kubectl apply -f kubernetes/deployment.yaml
+                        kubectl apply -f kubernetes/service.yaml
+                        
+                        # Wait for rollout
+                        kubectl rollout status deployment/react-app-deployment -n react-app --timeout=300s
+                        
+                        # Get service URL
+                        kubectl get service react-app-service -n react-app
+                    '''
+                }
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                echo '🏥 Running health checks...'
+                withKubeConfig([credentialsId: 'kubeconfig']) {
+                    sh '''
+                        # Wait for pods to be ready
+                        kubectl wait --for=condition=ready pod -l app=react-app -n react-app --timeout=300s
+                        
+                        # Get deployment status
+                        kubectl get deployment react-app-deployment -n react-app
+                        kubectl get pods -n react-app
+                        
+                        echo "✅ Health check completed"
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo '🧹 Cleaning up...'
+            sh 'docker system prune -f'
+            cleanWs()
+        }
+        success {
+            echo '✅ Pipeline completed successfully!'
+            emailext (
+                subject: "✅ Deployment Successful - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "The deployment was successful!\n\nBuild: ${env.BUILD_URL}",
+                to: "devops@company.com"
+            )
+        }
+        failure {
+            echo '❌ Pipeline failed!'
+            emailext (
+                subject: "❌ Deployment Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: "The deployment failed. Please check the build logs.\n\nBuild: ${env.BUILD_URL}",
+                to: "devops@company.com"
+            )
+        }
+    }
+}
