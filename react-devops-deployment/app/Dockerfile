@@ -1,35 +1,35 @@
-# Multi-stage build for React application
+# Stage 1: Build React app
 FROM node:18-alpine AS build
 
 WORKDIR /app
 
-# Copy package files
+# Copy package files and install dependencies
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci --only=production --silent
 
-# Copy source code
+# Copy all source and build
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# Production stage with nginx
+# Stage 2: Nginx for serving
 FROM nginx:1.21-alpine
 
-# Copy built files to nginx
+# Install curl for healthcheck
+RUN apk --no-cache add curl
+
+# Copy built React app
 COPY --from=build /app/build /usr/share/nginx/html
 
-# Copy custom nginx configuration
+# Copy custom Nginx config (make sure it's a server block)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose port 80
 EXPOSE 80
 
-# Add healthcheck
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
+  CMD curl -f http://localhost/ || exit 1
 
 # Start nginx
 CMD ["nginx", "-g", "daemon off;"]
+
