@@ -2,10 +2,9 @@ pipeline {
     agent any
     
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        KUBECONFIG_CREDENTIAL = credentials('kubeconfig')
-        IMAGE_NAME = 'your-dockerhub-username/react-app'
-        IMAGE_TAG = "${BUILD_NUMBER}"
+        DOCKER_IMAGE = "your-dockerhub-username/react-app"
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        KUBECONFIG = credentials('kubeconfig-credential')
     }
     
     stages {
@@ -21,19 +20,33 @@ pipeline {
                 echo 'Verifying pre-built React application...'
                 dir('react-devops-deployment/app') {
                     script {
-                        // Check if it's a pre-built app
                         sh 'ls -la'
-                        sh 'find . -name "*.html" -o -name "*.js" -o -name "*.css" | head -10'
                         
-                        // If there's a package.json, check if it has serve script
-                        sh '''
-                            if [ -f "package.json" ]; then
-                                echo "Found package.json, checking for serve script..."
-                                cat package.json
-                            else
-                                echo "No package.json found - assuming static files only"
-                            fi
-                        '''
+                        // Check for pre-built dist folder
+                        if (fileExists('dist')) {
+                            echo 'Found dist folder - using pre-built React app'
+                            sh 'ls -la dist/'
+                            
+                            // Verify essential files exist
+                            sh 'find dist/ -name "*.html" -o -name "*.js" -o -name "*.css" | head -10'
+                            
+                            // Check if index.html exists in dist
+                            if (!fileExists('dist/index.html')) {
+                                error 'No index.html found in dist folder'
+                            }
+                        } else if (fileExists('package.json')) {
+                            echo 'No dist folder found but package.json exists - building React app'
+                            sh 'npm ci'
+                            sh 'npm run build'
+                            // Move build output to dist if build folder exists
+                            sh '''
+                                if [ -d "build" ]; then
+                                    mv build dist
+                                fi
+                            '''
+                        } else {
+                            error 'No dist folder or package.json found - cannot proceed'
+                        }
                     }
                 }
             }
@@ -44,60 +57,79 @@ pipeline {
                 echo 'Building Docker image...'
                 dir('react-devops-deployment/app') {
                     script {
-                        // Create Dockerfile for pre-built React app
-                        writeFile file: 'Dockerfile', text: '''
-# Use Nginx to serve the pre-built React app
-FROM nginx:alpine
-
-# Copy the pre-built React app to Nginx html directory
-COPY . /usr/share/nginx/html
-
-# Copy custom nginx config if exists, otherwise use default
-COPY nginx.conf /etc/nginx/nginx.conf 2>/dev/null || echo "Using default nginx config"
-
-# Expose port 80
-EXPOSE 80
-
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
-'''
-                        
-                        // Create basic nginx config
-                        writeFile file: 'nginx.conf', text: '''
-events {
-    worker_connections 1024;
-}
-
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-    
-    sendfile        on;
-    keepalive_timeout  65;
-    
-    server {
-        listen       80;
-        server_name  localhost;
-        
-        location / {
-            root   /usr/share/nginx/html;
-            index  index.html index.htm;
-            try_files $uri $uri/ /index.html;
+                        // Create index.html in dist folder if it doesn't exist (for testing)
+                        if (!fileExists('dist/index.html')) {
+                            sh 'mkdir -p dist'
+                            writeFile file: 'dist/index.html', text: '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>React DevOps Deployment</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        
-        error_page   500 502 503 504  /50x.html;
-        location = /50x.html {
-            root   /usr/share/nginx/html;
+        .container { 
+            max-width: 600px; 
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
         }
-    }
-}
-'''
+        h1 { 
+            color: #fff; 
+            margin-bottom: 20px; 
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        p { 
+            font-size: 1.2em; 
+            line-height: 1.6; 
+            margin-bottom: 20px;
+        }
+        .build-info { 
+            background: rgba(0, 0, 0, 0.2); 
+            padding: 20px; 
+            border-radius: 5px; 
+            margin-top: 30px; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 React DevOps Deployment</h1>
+        <p>Welcome to your pre-built React application deployed via Jenkins CI/CD pipeline!</p>
+        <div class="build-info">
+            <p><strong>Build Number:</strong> ''' + env.BUILD_NUMBER + '''</p>
+            <p><strong>Deployment Date:</strong> ''' + new Date().toString() + '''</p>
+            <p><strong>Status:</strong> ✅ Successfully Deployed from Dist</p>
+            <p><strong>Source:</strong> Pre-built React App</p>
+        </div>
+        <p>🎉 Your CI/CD pipeline is working with pre-built assets!</p>
+    </div>
+</body>
+</html>
+                            '''
+                        }
                         
                         // Build Docker image
-                        def image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                        def dockerImage = docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
                         
-                        // Also tag as latest
-                        sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
+                        // Tag as latest
+                        sh "docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest"
                     }
                 }
             }
@@ -107,9 +139,9 @@ http {
             steps {
                 echo 'Pushing Docker image to DockerHub...'
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
-                        sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
-                        sh "docker push ${IMAGE_NAME}:latest"
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
+                        sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        sh "docker push ${DOCKER_IMAGE}:latest"
                     }
                 }
             }
@@ -128,7 +160,7 @@ metadata:
   labels:
     app: react-app
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       app: react-app
@@ -139,16 +171,28 @@ spec:
     spec:
       containers:
       - name: react-app
-        image: ${IMAGE_NAME}:${IMAGE_TAG}
+        image: ${DOCKER_IMAGE}:${DOCKER_TAG}
         ports:
         - containerPort: 80
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"
+            cpu: "250m"
           limits:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "128Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -164,11 +208,11 @@ spec:
   type: LoadBalancer
 """
                     
-                    // Apply to Kubernetes
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh 'kubectl apply -f k8s-deployment.yaml'
-                        sh 'kubectl rollout status deployment/react-app'
-                    }
+                    // Apply Kubernetes configuration
+                    sh 'kubectl apply -f k8s-deployment.yaml'
+                    
+                    // Wait for rollout to complete
+                    sh 'kubectl rollout status deployment/react-app --timeout=300s'
                 }
             }
         }
@@ -177,15 +221,23 @@ spec:
             steps {
                 echo 'Performing health check...'
                 script {
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        // Wait for deployment to be ready
-                        sh 'kubectl wait --for=condition=available --timeout=300s deployment/react-app'
-                        
-                        // Get service info
-                        sh 'kubectl get services react-app-service'
-                        sh 'kubectl get pods -l app=react-app'
-                        
-                        echo 'Health check completed successfully!'
+                    // Wait a bit for the service to be ready
+                    sleep(time: 30, unit: 'SECONDS')
+                    
+                    // Get service details
+                    sh 'kubectl get services react-app-service'
+                    sh 'kubectl get pods -l app=react-app'
+                    
+                    // Check if pods are running
+                    def podStatus = sh(
+                        script: 'kubectl get pods -l app=react-app -o jsonpath="{.items[*].status.phase}"',
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (podStatus.contains('Running')) {
+                        echo '✅ Health check passed - Application is running!'
+                    } else {
+                        error '❌ Health check failed - Application is not running properly'
                     }
                 }
             }
@@ -199,10 +251,35 @@ spec:
             cleanWs()
         }
         success {
-            echo 'Pipeline succeeded!'
+            echo '🎉 Pipeline completed successfully!'
+            script {
+                // Get service external IP (for LoadBalancer)
+                try {
+                    def externalIP = sh(
+                        script: 'kubectl get service react-app-service -o jsonpath="{.status.loadBalancer.ingress[0].ip}"',
+                        returnStdout: true
+                    ).trim()
+                    
+                    if (externalIP && externalIP != '') {
+                        echo "🌐 Application is accessible at: http://${externalIP}"
+                    } else {
+                        echo "🌐 Application deployed successfully. Check 'kubectl get services' for access details."
+                    }
+                } catch (Exception e) {
+                    echo "ℹ️  Application deployed. Use 'kubectl get services' to check access details."
+                }
+            }
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed!'
+            script {
+                // Show recent pod logs for debugging
+                try {
+                    sh 'kubectl logs -l app=react-app --tail=50'
+                } catch (Exception e) {
+                    echo 'Could not retrieve pod logs'
+                }
+            }
         }
     }
 }
