@@ -3,12 +3,9 @@ pipeline {
     
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        DOCKERHUB_USERNAME = 'your-dockerhub-username'
-        IMAGE_NAME = 'react-trend-app'
-        IMAGE_TAG = "${BUILD_NUMBER}"
         KUBECONFIG_CREDENTIAL = credentials('kubeconfig')
-        AWS_DEFAULT_REGION = 'us-west-2'
-        NAMESPACE = 'react-app'
+        IMAGE_NAME = 'your-dockerhub-username/react-app'
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
     
     stages {
@@ -19,18 +16,24 @@ pipeline {
             }
         }
         
-        stage('Build Application') {
+        stage('Verify Pre-built App') {
             steps {
-                echo 'Building React application...'
+                echo 'Verifying pre-built React application...'
                 dir('react-devops-deployment/app') {
                     script {
-                        docker.image('node:18-alpine').inside {
-                            sh '''
-                                npm ci --silent
-                                npm run build
-                                echo "Build completed successfully"
-                            '''
-                        }
+                        // Check if it's a pre-built app
+                        sh 'ls -la'
+                        sh 'find . -name "*.html" -o -name "*.js" -o -name "*.css" | head -10'
+                        
+                        // If there's a package.json, check if it has serve script
+                        sh '''
+                            if [ -f "package.json" ]; then
+                                echo "Found package.json, checking for serve script..."
+                                cat package.json
+                            else
+                                echo "No package.json found - assuming static files only"
+                            fi
+                        '''
                     }
                 }
             }
@@ -41,8 +44,60 @@ pipeline {
                 echo 'Building Docker image...'
                 dir('react-devops-deployment/app') {
                     script {
-                        def image = docker.build("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}")
-                        docker.build("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:latest")
+                        // Create Dockerfile for pre-built React app
+                        writeFile file: 'Dockerfile', text: '''
+# Use Nginx to serve the pre-built React app
+FROM nginx:alpine
+
+# Copy the pre-built React app to Nginx html directory
+COPY . /usr/share/nginx/html
+
+# Copy custom nginx config if exists, otherwise use default
+COPY nginx.conf /etc/nginx/nginx.conf 2>/dev/null || echo "Using default nginx config"
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+'''
+                        
+                        // Create basic nginx config
+                        writeFile file: 'nginx.conf', text: '''
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    
+    sendfile        on;
+    keepalive_timeout  65;
+    
+    server {
+        listen       80;
+        server_name  localhost;
+        
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+            try_files $uri $uri/ /index.html;
+        }
+        
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+}
+'''
+                        
+                        // Build Docker image
+                        def image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                        
+                        // Also tag as latest
+                        sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest"
                     }
                 }
             }
@@ -50,12 +105,11 @@ pipeline {
         
         stage('Push to DockerHub') {
             steps {
-                echo 'Pushing to DockerHub...'
+                echo 'Pushing Docker image to DockerHub...'
                 script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
-                        def image = docker.image("${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}")
-                        image.push()
-                        image.push("latest")
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials') {
+                        sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+                        sh "docker push ${IMAGE_NAME}:latest"
                     }
                 }
             }
@@ -64,37 +118,75 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 echo 'Deploying to Kubernetes...'
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                        # Update image in deployment
-                        sed -i "s|DOCKERHUB_USERNAME|${DOCKERHUB_USERNAME}|g" react-devops-deployment/kubernetes/deployment.yaml
-                        
-                        # Apply Kubernetes manifests
-                        kubectl apply -f react-devops-deployment/kubernetes/namespace.yaml
-                        kubectl apply -f react-devops-deployment/kubernetes/configmap.yaml
-                        kubectl apply -f react-devops-deployment/kubernetes/deployment.yaml
-                        kubectl apply -f react-devops-deployment/kubernetes/service.yaml
-                        
-                        # Wait for rollout
-                        kubectl rollout status deployment/react-app-deployment -n ${NAMESPACE} --timeout=300s
-                        
-                        # Get service status
-                        kubectl get service react-app-service -n ${NAMESPACE}
-                    '''
+                script {
+                    // Create Kubernetes deployment YAML
+                    writeFile file: 'k8s-deployment.yaml', text: """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: react-app
+  labels:
+    app: react-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: react-app
+  template:
+    metadata:
+      labels:
+        app: react-app
+    spec:
+      containers:
+      - name: react-app
+        image: ${IMAGE_NAME}:${IMAGE_TAG}
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: react-app-service
+spec:
+  selector:
+    app: react-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
+"""
+                    
+                    // Apply to Kubernetes
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        sh 'kubectl apply -f k8s-deployment.yaml'
+                        sh 'kubectl rollout status deployment/react-app'
+                    }
                 }
             }
         }
         
         stage('Health Check') {
             steps {
-                echo 'Running health checks...'
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                        kubectl wait --for=condition=ready pod -l app=react-app -n ${NAMESPACE} --timeout=300s
-                        kubectl get deployment react-app-deployment -n ${NAMESPACE}
-                        kubectl get pods -n ${NAMESPACE}
-                        echo "Health check completed"
-                    '''
+                echo 'Performing health check...'
+                script {
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        // Wait for deployment to be ready
+                        sh 'kubectl wait --for=condition=available --timeout=300s deployment/react-app'
+                        
+                        // Get service info
+                        sh 'kubectl get services react-app-service'
+                        sh 'kubectl get pods -l app=react-app'
+                        
+                        echo 'Health check completed successfully!'
+                    }
                 }
             }
         }
@@ -103,11 +195,11 @@ pipeline {
     post {
         always {
             echo 'Cleaning up...'
-            sh 'docker system prune -f || true'
+            sh 'docker system prune -f'
             cleanWs()
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo 'Pipeline succeeded!'
         }
         failure {
             echo 'Pipeline failed!'
