@@ -46,3 +46,29 @@ module "jenkins" {
     Project     = var.project_name
   }
 }
+
+# Monitoring Stack (Prometheus & Grafana)
+resource "aws_instance" "monitoring" {
+  ami           = var.ami_id
+  instance_type = var.monitoring_instance_type
+  subnet_id     = module.vpc.public_subnet_ids[0]
+  key_name      = var.key_name
+  vpc_security_group_ids = [aws_security_group.monitoring_sg.id]
+
+  root_block_device {
+    volume_size = 30
+    volume_type = "gp3"
+  }
+
+  user_data = templatefile("${path.module}/monitoring/userdata.sh", {
+    prometheus_retention = var.prometheus_retention_period
+    grafana_password    = var.grafana_admin_password
+  })
+
+  tags = merge(
+    {
+      Name = "${var.project_name}-monitoring"
+    },
+    var.monitoring_tags
+  )
+}

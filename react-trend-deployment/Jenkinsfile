@@ -47,6 +47,24 @@ pipeline {
                 }
             }
         }
+        
+        stage('Deploy Monitoring') {
+            steps {
+                script {
+                    withKubeConfig([credentialsId: KUBERNETES_CONFIG]) {
+                        sh """
+                            kubectl apply -f kubernetes/monitoring.yaml
+                            # Wait for Prometheus and Grafana to be ready
+                            kubectl wait --for=condition=available --timeout=300s deployment/prometheus -n monitoring
+                            kubectl wait --for=condition=available --timeout=300s deployment/grafana -n monitoring
+                            
+                            # Get Grafana service URL
+                            echo "Grafana will be available at: http://\$(kubectl get svc grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+                        """
+                    }
+                }
+            }
+        }
     }
     
     post {
