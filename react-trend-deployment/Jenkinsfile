@@ -82,18 +82,30 @@ pipeline {
                 script {
                     withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
                         sh """
-                            # Configure kubectl
+                            echo "Testing AWS connectivity..."
+                            aws sts get-caller-identity
+                            
+                            echo "Configuring kubectl..."
                             aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
                             
-                            # Update deployment with new image
-                            kubectl set image deployment/trend-app trend-app=${DOCKER_IMAGE}:${env.BUILD_TAG} -n ${NAMESPACE}
+                            echo "Testing cluster connectivity..."
+                            timeout 30 kubectl cluster-info || {
+                                echo "Direct cluster connection failed, trying alternative approach..."
+                                # Try with shorter timeout and retry
+                                kubectl config view
+                                kubectl get nodes --request-timeout=10s || echo "Node connection failed"
+                            }
                             
-                            # Wait for rollout to complete
-                            kubectl rollout status deployment/trend-app -n ${NAMESPACE} --timeout=300s
+                            echo "Attempting deployment update..."
+                            # Use shorter timeout for kubectl operations
+                            kubectl set image deployment/trend-app trend-app=${DOCKER_IMAGE}:${env.BUILD_TAG} -n ${NAMESPACE} --request-timeout=30s
                             
-                            # Show deployment status
-                            kubectl get pods -n ${NAMESPACE}
-                            kubectl get svc -n ${NAMESPACE}
+                            echo "Checking rollout status..."
+                            kubectl rollout status deployment/trend-app -n ${NAMESPACE} --timeout=120s
+                            
+                            echo "Deployment status:"
+                            kubectl get pods -n ${NAMESPACE} --request-timeout=10s
+                            kubectl get svc -n ${NAMESPACE} --request-timeout=10s
                         """
                     }
                 }
