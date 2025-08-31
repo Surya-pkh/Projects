@@ -23,19 +23,27 @@ pipeline {
             }
         }
         
-        stage('Setup Node.js') {
+        stage('Build React App') {
             steps {
                 script {
+                    // Use Docker to build the React application
                     sh """
-                        # Check if Node.js is installed
-                        if ! command -v node &> /dev/null; then
-                            echo "Node.js not found, installing..."
-                            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-                            sudo apt-get install -y nodejs
-                        else
-                            echo "Node.js version: \$(node --version)"
-                            echo "npm version: \$(npm --version)"
-                        fi
+                        cd react-trend-deployment
+                        echo "Building React application using Docker..."
+                        
+                        # Use Node.js Docker container to build the app
+                        docker run --rm -v \$(pwd):/app -w /app node:18-alpine sh -c "
+                            echo 'Installing dependencies...'
+                            npm install
+                            echo 'Building React application...'
+                            npm run build
+                            echo 'Build complete!'
+                            ls -la dist/
+                        "
+                        
+                        # Verify dist directory was created on host
+                        echo "Verifying build output on host:"
+                        ls -la dist/
                     """
                 }
             }
@@ -44,23 +52,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Navigate to the react-trend-deployment directory and build the React app
-                    sh """
-                        cd react-trend-deployment
-                        echo "Building React application..."
-                        
-                        # Install dependencies
-                        npm install
-                        
-                        # Build the React application
-                        npm run build
-                        
-                        # Verify dist directory was created
-                        echo "Verifying build output:"
-                        ls -la dist/
-                    """
-                    
-                    // Build Docker image
+                    // Build Docker image (dist/ directory should now exist)
                     sh """
                         cd react-trend-deployment
                         echo "Building Docker image..."
