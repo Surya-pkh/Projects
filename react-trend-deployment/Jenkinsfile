@@ -23,38 +23,47 @@ pipeline {
             }
         }
         
+        stage('Setup Node.js') {
+            steps {
+                script {
+                    sh """
+                        # Check if Node.js is installed
+                        if ! command -v node &> /dev/null; then
+                            echo "Node.js not found, installing..."
+                            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+                            sudo apt-get install -y nodejs
+                        else
+                            echo "Node.js version: \$(node --version)"
+                            echo "npm version: \$(npm --version)"
+                        fi
+                    """
+                }
+            }
+        }
+        
         stage('Build Docker Image') {
             steps {
                 script {
-                    // First, let's see what's in the workspace
-                    sh """
-                        echo "Current working directory:"
-                        pwd
-                        echo "Contents of workspace:"
-                        ls -la
-                        echo "Looking for react-trend-deployment directory:"
-                        ls -la react-trend-deployment/ || echo "Directory not found"
-                    """
-                    
-                    // Navigate to the react-trend-deployment directory and build
+                    // Navigate to the react-trend-deployment directory and build the React app
                     sh """
                         cd react-trend-deployment
-                        echo "Building Docker image from react-trend-deployment directory"
+                        echo "Building React application..."
                         
-                        # Verify files exist
-                        echo "Contents of react-trend-deployment:"
-                        ls -la
-                        echo "Checking for dist directory:"
-                        ls -la dist/ || echo "dist/ directory not found"
-                        echo "Checking for Dockerfile:"
-                        ls -la Dockerfile || echo "Dockerfile not found"
-                        echo "Checking for nginx.conf:"
-                        ls -la nginx.conf || echo "nginx.conf not found"
+                        # Install dependencies
+                        npm install
+                        
+                        # Build the React application
+                        npm run build
+                        
+                        # Verify dist directory was created
+                        echo "Verifying build output:"
+                        ls -la dist/
                     """
                     
                     // Build Docker image
                     sh """
                         cd react-trend-deployment
+                        echo "Building Docker image..."
                         docker build -t ${DOCKER_IMAGE}:${env.BUILD_TAG} .
                         docker tag ${DOCKER_IMAGE}:${env.BUILD_TAG} ${DOCKER_IMAGE}:latest
                     """
