@@ -33,7 +33,7 @@ scrape_configs:
     kubernetes_sd_configs:
     - role: node
     scheme: https
-    path: /metrics/cadvisor
+    metrics_path: /metrics/cadvisor
     tls_config:
       ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
@@ -99,6 +99,8 @@ scrape_configs:
 
   # Specific job for trend-app
   - job_name: 'trend-app'
+    scrape_interval: 30s
+    metrics_path: /metrics
     kubernetes_sd_configs:
     - role: pod
       namespaces:
