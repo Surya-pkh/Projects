@@ -1,0 +1,177 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Trend Application Monitoring",
+    "tags": ["kubernetes", "trend-app", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Application Health",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "up{job=\"kubernetes-pods\", kubernetes_namespace=\"trend\"}",
+            "format": "time_series",
+            "legendFormat": "{{kubernetes_pod_name}}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {
+                "options": {
+                  "0": {
+                    "text": "DOWN"
+                  },
+                  "1": {
+                    "text": "UP"
+                  }
+                },
+                "type": "value"
+              }
+            ],
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "red",
+                  "value": null
+                },
+                {
+                  "color": "green",
+                  "value": 1
+                }
+              ]
+            }
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Pod Count",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "count(up{job=\"kubernetes-pods\", kubernetes_namespace=\"trend\"})",
+            "format": "time_series"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        }
+      },
+      {
+        "id": 3,
+        "title": "HTTP Requests Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(http_requests_total{kubernetes_namespace=\"trend\"}[5m])",
+            "format": "time_series",
+            "legendFormat": "{{method}} {{status_code}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Requests/sec"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": 4,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "container_memory_usage_bytes{namespace=\"trend\", container!=\"POD\", container!=\"\"}",
+            "format": "time_series",
+            "legendFormat": "{{pod}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Bytes",
+            "logBase": 1
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        }
+      },
+      {
+        "id": 5,
+        "title": "CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(container_cpu_usage_seconds_total{namespace=\"trend\", container!=\"POD\", container!=\"\"}[5m])",
+            "format": "time_series",
+            "legendFormat": "{{pod}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "CPU Cores"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        }
+      },
+      {
+        "id": 6,
+        "title": "Network I/O",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(container_network_receive_bytes_total{namespace=\"trend\"}[5m])",
+            "format": "time_series",
+            "legendFormat": "Received - {{pod}}"
+          },
+          {
+            "expr": "rate(container_network_transmit_bytes_total{namespace=\"trend\"}[5m])",
+            "format": "time_series",
+            "legendFormat": "Transmitted - {{pod}}"
+          }
+        ],
+        "yAxes": [
+          {
+            "label": "Bytes/sec"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 24
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

@@ -50,3 +50,34 @@ variable "key_name" {
   description = "Name of the SSH key pair"
   type        = string
 }
+
+variable "ami_id" {
+  description = "AMI ID for instances"
+  type        = string
+  default     = "ami-065778886ef8ec7c8"  # Ubuntu 22.04 LTS
+}
+
+variable "monitoring_instance_type" {
+  description = "EC2 instance type for monitoring"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "prometheus_retention_period" {
+  description = "Prometheus data retention period"
+  type        = string
+  default     = "15d"
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password"
+  type        = string
+  default     = "admin123"
+  sensitive   = true
+}
+
+variable "monitoring_tags" {
+  description = "Tags for monitoring resources"
+  type        = map(string)
+  default     = {}
+}

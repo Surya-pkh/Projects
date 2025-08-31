@@ -2,64 +2,108 @@ pipeline {
     agent any
     
     environment {
-        DOCKER_IMAGE = 'your-dockerhub-username/trend-app'
-        DOCKER_CREDENTIALS = 'docker-credentials-id'
-        KUBERNETES_CONFIG = 'eks-config'
+        DOCKER_IMAGE = 'suryapkh/trend-app'
+        AWS_DEFAULT_REGION = 'us-west-2'
+        EKS_CLUSTER_NAME = 'trend-app-cluster'
+        NAMESPACE = 'trend'
     }
     
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
+                git branch: 'main', url: 'https://github.com/Surya-pkh/Projects.git'
+                script {
+                    env.GIT_COMMIT_SHA = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.BUILD_TAG = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_SHA}"
+                    echo "Building image tag: ${env.BUILD_TAG}"
+                }
             }
         }
         
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE}:${BUILD_NUMBER}")
+                    // Navigate to the react-trend-deployment directory
+                    sh """
+                        cd react-trend-deployment
+                        echo "Building Docker image from react-trend-deployment directory"
+                        
+                        # Verify files exist
+                        ls -la dist/
+                        ls -la Dockerfile
+                        ls -la nginx.conf
+                    """
+                    
+                    // Build Docker image
+                    sh """
+                        cd react-trend-deployment
+                        docker build -t ${DOCKER_IMAGE}:${env.BUILD_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${env.BUILD_TAG} ${DOCKER_IMAGE}:latest
+                    """
                 }
             }
         }
         
-        stage('Push to DockerHub') {
+        stage('Push to Docker Hub') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKER_CREDENTIALS) {
-                        docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}").push()
-                        docker.image("${DOCKER_IMAGE}:${BUILD_NUMBER}").push('latest')
-                    }
-                }
-            }
-        }
-        
-        stage('Deploy to Kubernetes') {
-            steps {
-                script {
-                    withKubeConfig([credentialsId: KUBERNETES_CONFIG]) {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
-                            kubectl apply -f kubernetes/namespace.yaml
-                            sed -i 's|\${DOCKER_IMAGE}|${DOCKER_IMAGE}|g; s|\${IMAGE_TAG}|${BUILD_NUMBER}|g' kubernetes/deployment.yaml
-                            kubectl apply -f kubernetes/deployment.yaml
-                            kubectl apply -f kubernetes/service.yaml
+                            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                            docker push ${DOCKER_IMAGE}:${env.BUILD_TAG}
+                            docker push ${DOCKER_IMAGE}:${env.BUILD_TAG}
                         """
                     }
                 }
             }
         }
         
-        stage('Deploy Monitoring') {
+        stage('Deploy to EKS') {
             steps {
                 script {
-                    withKubeConfig([credentialsId: KUBERNETES_CONFIG]) {
+                    withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
                         sh """
-                            kubectl apply -f kubernetes/monitoring.yaml
-                            # Wait for Prometheus and Grafana to be ready
-                            kubectl wait --for=condition=available --timeout=300s deployment/prometheus -n monitoring
-                            kubectl wait --for=condition=available --timeout=300s deployment/grafana -n monitoring
+                            # Configure kubectl
+                            aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
                             
-                            # Get Grafana service URL
-                            echo "Grafana will be available at: http://\$(kubectl get svc grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+                            # Update deployment with new image
+                            kubectl set image deployment/trend-app trend-app=${DOCKER_IMAGE}:${env.BUILD_TAG} -n ${NAMESPACE}
+                            
+                            # Wait for rollout to complete
+                            kubectl rollout status deployment/trend-app -n ${NAMESPACE} --timeout=300s
+                            
+                            # Show deployment status
+                            kubectl get pods -n ${NAMESPACE}
+                            kubectl get svc -n ${NAMESPACE}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                script {
+                    withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
+                        sh """
+                            # Get LoadBalancer URL
+                            LOAD_BALANCER_URL=\$(kubectl get svc trend-app-service -n ${NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                            echo "LoadBalancer URL: http://\$LOAD_BALANCER_URL"
+                            
+                            # Health check with retries
+                            for i in {1..5}; do
+                                echo "Health check attempt \$i..."
+                                if curl -f --max-time 10 http://\$LOAD_BALANCER_URL; then
+                                    echo "✅ Application is healthy!"
+                                    break
+                                else
+                                    echo "❌ Attempt \$i failed, retrying in 30 seconds..."
+                                    sleep 30
+                                fi
+                            done
                         """
                     }
                 }
@@ -69,7 +113,278 @@ pipeline {
     
     post {
         always {
-            cleanWs()
+            script {
+                // Clean up Docker images
+                sh """
+                    docker rmi ${DOCKER_IMAGE}:${env.BUILD_TAG} || true
+                    docker system prune -f || true
+                """
+            }
+        }
+        success {
+            echo '🎉 Pipeline succeeded! Application deployed successfully.'
+            script {
+                sh """
+                    echo "✅ Deployment Summary:"
+                    echo "🔗 Application URL: http://a33f4d4d9655c4121a50242bb0a3942b-321113.us-west-2.elb.amazonaws.com"
+                    echo "🐳 Docker Image: ${DOCKER_IMAGE}:${env.BUILD_TAG}"
+                    echo "📊 Monitoring: http://34.210.247.74:3000"
+                    echo "📂 Repository: https://github.com/Surya-pkh/Projects/tree/main/react-trend-deployment"
+                """
+            }
+        }
+        failure {
+            echo '❌ Pipeline failed! Check the logs for details.'
+        }
+    }
+}
+                    sh """
+                        # Install trivy if not available
+                        if ! command -v trivy &> /dev/null; then
+                            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        fi
+                        
+                        # Scan the dockerfile
+                        trivy config --severity HIGH,CRITICAL Dockerfile || true
+                    """
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Copy application files if needed
+                    sh '''
+                        # Ensure dist directory exists for Docker build
+                        if [ ! -d "dist" ]; then
+                            echo "Warning: dist directory not found, creating empty structure"
+                            mkdir -p dist
+                            echo '<html><body><h1>Trend App</h1></body></html>' > dist/index.html
+                        fi
+                    '''
+                    
+                    def image = docker.build("${DOCKER_IMAGE}:${BUILD_TAG}")
+                    env.DOCKER_IMAGE_FULL = "${DOCKER_IMAGE}:${BUILD_TAG}"
+                }
+            }
+        }
+        
+        stage('Test Docker Image') {
+            steps {
+                script {
+                    // Test the built image
+                    sh """
+                        # Start container for testing
+                        docker run -d --name test-container -p 3001:3000 ${DOCKER_IMAGE}:${BUILD_TAG}
+                        
+                        # Wait for container to start
+                        sleep 10
+                        
+                        # Test if application is running
+                        curl -f http://localhost:3001/health || curl -f http://localhost:3001/ || {
+                            echo "Application health check failed"
+                            docker logs test-container
+                            docker rm -f test-container
+                            exit 1
+                        }
+                        
+                        # Cleanup test container
+                        docker rm -f test-container
+                    """
+                }
+            }
+        }
+        
+        stage('Push to DockerHub') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKER_CREDENTIALS) {
+                        def image = docker.image("${DOCKER_IMAGE}:${BUILD_TAG}")
+                        image.push()
+                        image.push('latest')
+                        
+                        // Also push with build number
+                        image.push("${BUILD_NUMBER}")
+                    }
+                }
+            }
+        }
+        
+        stage('Update Kubernetes Manifests') {
+            steps {
+                script {
+                    // Update deployment with new image tag
+                    sh """
+                        # Create a temporary copy of deployment file
+                        cp kubernetes/deployment.yaml kubernetes/deployment-${BUILD_NUMBER}.yaml
+                        
+                        # Replace placeholders with actual values
+                        sed -i 's|\${DOCKER_IMAGE}|${DOCKER_IMAGE}|g' kubernetes/deployment-${BUILD_NUMBER}.yaml
+                        sed -i 's|\${IMAGE_TAG}|${BUILD_TAG}|g' kubernetes/deployment-${BUILD_NUMBER}.yaml
+                        
+                        # Validate the manifests
+                        kubectl --dry-run=client apply -f kubernetes/deployment-${BUILD_NUMBER}.yaml
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
+                        sh """
+                            # Configure kubectl for EKS
+                            aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
+                            
+                            # Apply namespace
+                            kubectl apply -f kubernetes/namespace.yaml
+                            
+                            # Apply ConfigMaps
+                            kubectl apply -f kubernetes/configmap.yaml
+                            
+                            # Apply deployment with updated image
+                            kubectl apply -f kubernetes/deployment-${BUILD_NUMBER}.yaml
+                            
+                            # Apply services
+                            kubectl apply -f kubernetes/service.yaml
+                            
+                            # Apply HPA
+                            kubectl apply -f kubernetes/hpa.yaml
+                            
+                            # Apply ingress (optional)
+                            kubectl apply -f kubernetes/ingress.yaml || echo "Ingress controller not available"
+                            
+                            # Wait for deployment to complete
+                            kubectl rollout status deployment/trend-app -n trend --timeout=300s
+                            
+                            # Get service information
+                            echo "=== Deployment Status ==="
+                            kubectl get pods -n trend
+                            kubectl get services -n trend
+                            
+                            # Get LoadBalancer URL
+                            echo "=== LoadBalancer Information ==="
+                            kubectl get service trend-app-service -n trend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' || echo "LoadBalancer not ready yet"
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy Monitoring') {
+            steps {
+                script {
+                    withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
+                        sh """
+                            # Apply monitoring configurations
+                            kubectl apply -f kubernetes/monitoring.yaml || echo "Monitoring config not found, skipping"
+                            
+                            # Create monitoring namespace if it doesn't exist
+                            kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+                            
+                            echo "=== Monitoring Setup ==="
+                            echo "Prometheus and Grafana should be accessible via the monitoring instance"
+                            echo "Check Terraform outputs for monitoring instance IP"
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Smoke Tests') {
+            steps {
+                script {
+                    withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
+                        sh """
+                            # Wait for LoadBalancer to be ready
+                            echo "Waiting for LoadBalancer to be ready..."
+                            
+                            # Get LoadBalancer hostname
+                            LB_HOSTNAME=\$(kubectl get service trend-app-service -n trend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+                            
+                            if [ -n "\$LB_HOSTNAME" ]; then
+                                echo "LoadBalancer hostname: \$LB_HOSTNAME"
+                                
+                                # Wait for DNS propagation and health check
+                                for i in {1..30}; do
+                                    if curl -f -s "http://\$LB_HOSTNAME/health" || curl -f -s "http://\$LB_HOSTNAME/"; then
+                                        echo "Application is healthy!"
+                                        break
+                                    fi
+                                    echo "Attempt \$i: Waiting for application to be ready..."
+                                    sleep 10
+                                done
+                            else
+                                echo "LoadBalancer not ready, checking pod health directly"
+                                kubectl exec -n trend \$(kubectl get pod -n trend -l app=trend-app -o jsonpath='{.items[0].metadata.name}') -- curl -f localhost:3000/health || curl -f localhost:3000/
+                            fi
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            script {
+                echo "=== Deployment Successful ==="
+                echo "Build Tag: ${BUILD_TAG}"
+                echo "Docker Image: ${DOCKER_IMAGE}:${BUILD_TAG}"
+                
+                withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
+                    def lbHostname = sh(
+                        script: "kubectl get service trend-app-service -n trend -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo 'Not Ready'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "Application URL: http://${lbHostname}"
+                    
+                    // Send notification (configure webhook/email)
+                    // slackSend(
+                    //     channel: '#deployments',
+                    //     message: "✅ Trend App deployed successfully! Version: ${BUILD_TAG}, URL: http://${lbHostname}"
+                    // )
+                }
+            }
+        }
+        
+        failure {
+            script {
+                echo "=== Deployment Failed ==="
+                // Send failure notification
+                // slackSend(
+                //     channel: '#deployments',
+                //     message: "❌ Trend App deployment failed! Build: ${BUILD_NUMBER}, Check: ${BUILD_URL}"
+                // )
+                
+                // Cleanup failed resources
+                sh """
+                    # Cleanup test containers if any
+                    docker rm -f test-container 2>/dev/null || true
+                    
+                    # Remove temporary deployment file
+                    rm -f kubernetes/deployment-${BUILD_NUMBER}.yaml || true
+                """
+            }
+        }
+        
+        always {
+            script {
+                // Archive artifacts
+                archiveArtifacts artifacts: 'kubernetes/deployment-*.yaml', allowEmptyArchive: true
+                
+                // Cleanup Docker images to save space
+                sh """
+                    # Remove old images (keep last 5)
+                    docker images ${DOCKER_IMAGE} --format "table {{.Tag}}\\t{{.ID}}" | tail -n +2 | head -n -5 | awk '{print \$2}' | xargs -r docker rmi || true
+                """
+                
+                // Clean workspace
+                cleanWs()
+            }
         }
     }
 }
