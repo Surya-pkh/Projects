@@ -82,30 +82,35 @@ pipeline {
                 script {
                     withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
                         sh """
-                            echo "Testing AWS connectivity..."
-                            aws sts get-caller-identity
+                            echo "🚀 Deploying to EKS cluster..."
                             
-                            echo "Configuring kubectl..."
+                            # Configure kubectl with shorter timeout
                             aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
                             
+                            # Test basic connectivity
                             echo "Testing cluster connectivity..."
-                            timeout 30 kubectl cluster-info || {
-                                echo "Direct cluster connection failed, trying alternative approach..."
-                                # Try with shorter timeout and retry
-                                kubectl config view
-                                kubectl get nodes --request-timeout=10s || echo "Node connection failed"
-                            }
-                            
-                            echo "Attempting deployment update..."
-                            # Use shorter timeout for kubectl operations
-                            kubectl set image deployment/trend-app trend-app=${DOCKER_IMAGE}:${env.BUILD_TAG} -n ${NAMESPACE} --request-timeout=30s
-                            
-                            echo "Checking rollout status..."
-                            kubectl rollout status deployment/trend-app -n ${NAMESPACE} --timeout=120s
-                            
-                            echo "Deployment status:"
-                            kubectl get pods -n ${NAMESPACE} --request-timeout=10s
-                            kubectl get svc -n ${NAMESPACE} --request-timeout=10s
+                            if timeout 20 kubectl get nodes --request-timeout=15s; then
+                                echo "✅ Cluster connectivity successful"
+                                
+                                # Deploy the new image
+                                echo "🔄 Updating deployment with image: ${DOCKER_IMAGE}:${env.BUILD_TAG}"
+                                kubectl set image deployment/trend-app trend-app=${DOCKER_IMAGE}:${env.BUILD_TAG} -n ${NAMESPACE} --request-timeout=30s
+                                
+                                # Wait for rollout with timeout
+                                echo "⏳ Waiting for rollout to complete..."
+                                kubectl rollout status deployment/trend-app -n ${NAMESPACE} --timeout=180s
+                                
+                                # Get status
+                                echo "📊 Deployment status:"
+                                kubectl get pods -n ${NAMESPACE} --request-timeout=10s
+                                kubectl get svc -n ${NAMESPACE} --request-timeout=10s
+                                
+                                echo "✅ Deployment completed successfully!"
+                            else
+                                echo "❌ Cluster connectivity failed, but image was built and pushed successfully"
+                                echo "💡 You can manually deploy using: kubectl set image deployment/trend-app trend-app=${DOCKER_IMAGE}:${env.BUILD_TAG} -n ${NAMESPACE}"
+                                exit 1
+                            fi
                         """
                     }
                 }
