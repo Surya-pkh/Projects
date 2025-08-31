@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trend-app-monitoring-config
+  namespace: trend
+data:
+  prometheus-config.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
+    scrape_configs:
+      - job_name: 'trend-app'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - trend
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
+      - job_name: 'nginx-exporter'
+        static_configs:
+          - targets: ['trend-app-service.trend.svc.cluster.local:80']
+        metrics_path: /metrics
+        scrape_interval: 30s
+
+  alerting-rules.yml: |
+    groups:
+      - name: trend-app-alerts
+        rules:
+          - alert: TrendAppDown
+            expr: up{job="trend-app"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Trend App is down"
+              description: "Trend App has been down for more than 1 minute"
+
+          - alert: HighMemoryUsage
+            expr: container_memory_usage_bytes{pod=~"trend-app.*"} / container_spec_memory_limit_bytes > 0.8
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage detected"
+              description: "Memory usage is above 80% for {{ $labels.pod }}"
+
+          - alert: HighCPUUsage
+            expr: rate(container_cpu_usage_seconds_total{pod=~"trend-app.*"}[5m]) > 0.8
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage detected"
+              description: "CPU usage is above 80% for {{ $labels.pod }}"
+
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total{pod=~"trend-app.*"}[15m]) > 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod is crash looping"
+              description: "Pod {{ $labels.pod }} is restarting frequently"
