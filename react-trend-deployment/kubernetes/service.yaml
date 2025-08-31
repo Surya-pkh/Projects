@@ -3,11 +3,36 @@ kind: Service
 metadata:
   name: trend-app-service
   namespace: trend
+  labels:
+    app: trend-app
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 spec:
   type: LoadBalancer
   ports:
   - port: 80
     targetPort: 3000
     protocol: TCP
+    name: http
+  selector:
+    app: trend-app
+  sessionAffinity: None
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trend-app-nodeport
+  namespace: trend
+  labels:
+    app: trend-app
+spec:
+  type: NodePort
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
   selector:
     app: trend-app
