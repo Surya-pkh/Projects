@@ -32,7 +32,7 @@ pipeline {
                         echo "Building React application using Docker..."
                         
                         # Use Node.js Docker container to build the app
-                        docker run --rm -v \$(pwd):/app -w /app node:18-alpine sh -c "
+                        docker run --rm -v \$(pwd):/app -w /app node:22-alpine sh -c "
                             echo 'Installing dependencies...'
                             npm install
                             echo 'Building React application...'
@@ -84,12 +84,12 @@ pipeline {
                         sh """
                             echo "🚀 Deploying to EKS cluster..."
                             
-                            # Configure kubectl with shorter timeout
+                            # Configure kubectl with longer timeout
                             aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
                             
-                            # Test basic connectivity
+                            # Test basic connectivity with longer timeout
                             echo "Testing cluster connectivity..."
-                            if timeout 20 kubectl get nodes --request-timeout=15s; then
+                            if timeout 60 kubectl get nodes --request-timeout=45s; then
                                 echo "✅ Cluster connectivity successful"
                                 
                                 # Deploy the new image
