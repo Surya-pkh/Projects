@@ -80,15 +80,27 @@ pipeline {
         stage('Deploy to EKS') {
             steps {
                 script {
-                    withCredentials([aws(credentialsId: 'aws-credentials', region: "${AWS_DEFAULT_REGION}")]) {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-credentials',
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]]) {
                         sh """
+                            export AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
                             echo "🚀 Deploying to EKS cluster..."
+                            
+                            # Verify AWS CLI configuration
+                            aws configure list
+                            aws sts get-caller-identity
                             
                             # Configure kubectl with longer timeout
                             aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
                             
-                            # Test basic connectivity with longer timeout
+                            # Test basic connectivity with longer timeout and verbose logging
                             echo "Testing cluster connectivity..."
+                            kubectl version --client
+                            kubectl config view --minify
                             if timeout 60 kubectl get nodes --request-timeout=45s; then
                                 echo "✅ Cluster connectivity successful"
                                 
