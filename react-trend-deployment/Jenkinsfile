@@ -94,11 +94,30 @@ pipeline {
                             aws configure list
                             aws sts get-caller-identity
                             
+                            # Get Jenkins instance info
+                            echo "🏢 Jenkins Instance Network Info:"
+                            curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || true
+                            curl -s http://169.254.169.254/latest/meta-data/vpc-id || true
+                            
+                            # Get EKS cluster info
+                            echo "🚀 EKS Cluster Network Info:"
+                            aws eks describe-cluster --name ${EKS_CLUSTER_NAME} --query 'cluster.resourcesVpcConfig'
+                            
                             # Configure kubectl with longer timeout
                             aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
                             
-                            # Test basic connectivity with longer timeout and verbose logging
-                            echo "Testing cluster connectivity..."
+                            # Test network connectivity
+                            echo "Testing network connectivity..."
+                            CLUSTER_ENDPOINT="65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com"
+                            echo "🔍 Testing DNS resolution..."
+                            nslookup \$CLUSTER_ENDPOINT || true
+                            echo "🔌 Testing TCP connectivity..."
+                            nc -zv -w 10 \$CLUSTER_ENDPOINT 443 || true
+                            echo "🌐 Testing HTTPS connectivity..."
+                            curl -v --max-time 15 https://\$CLUSTER_ENDPOINT || true
+                            
+                            # Test kubectl
+                            echo "🔑 Testing kubectl configuration..."
                             kubectl version --client
                             kubectl config view --minify
                             if timeout 60 kubectl get nodes --request-timeout=45s; then
