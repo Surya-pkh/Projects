@@ -1,0 +1,12 @@
+{
+  "name": "react-trend-deployment",
+  "version": "1.0.0",
+  "description": "# 🚀 Trend E-commerce Application - Production Deployment",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
