@@ -1,0 +1,521 @@
+Started by GitHub push by Surya-pkh
+Obtained react-trend-deployment/Jenkinsfile from git https://github.com/Surya-pkh/Projects.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/lib/jenkins/workspace/test
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Declarative: Checkout SCM)
+[Pipeline] checkout
+The recommended git tool is: git
+using credential Git-credentials
+ > git rev-parse --resolve-git-dir /var/lib/jenkins/workspace/test/.git # timeout=10
+Fetching changes from the remote Git repository
+ > git config remote.origin.url https://github.com/Surya-pkh/Projects.git # timeout=10
+Fetching upstream changes from https://github.com/Surya-pkh/Projects.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.34.1'
+using GIT_ASKPASS to set credentials 
+ > git fetch --tags --force --progress -- https://github.com/Surya-pkh/Projects.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+Checking out Revision 0353bd7fe8eca86e87c3d6e5d6cf2bd97ca81826 (refs/remotes/origin/main)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 0353bd7fe8eca86e87c3d6e5d6cf2bd97ca81826 # timeout=10
+Commit message: "m"
+ > git rev-list --no-walk fbcd025885e27b1a79c5bf94d5ffea0fd3b52c27 # timeout=10
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout)
+[Pipeline] git
+The recommended git tool is: git
+No credentials specified
+ > git rev-parse --resolve-git-dir /var/lib/jenkins/workspace/test/.git # timeout=10
+Fetching changes from the remote Git repository
+ > git config remote.origin.url https://github.com/Surya-pkh/Projects.git # timeout=10
+Fetching upstream changes from https://github.com/Surya-pkh/Projects.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.34.1'
+ > git fetch --tags --force --progress -- https://github.com/Surya-pkh/Projects.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+Checking out Revision 0353bd7fe8eca86e87c3d6e5d6cf2bd97ca81826 (refs/remotes/origin/main)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 0353bd7fe8eca86e87c3d6e5d6cf2bd97ca81826 # timeout=10
+ > git branch -a -v --no-abbrev # timeout=10
+ > git branch -D main # timeout=10
+ > git checkout -b main 0353bd7fe8eca86e87c3d6e5d6cf2bd97ca81826 # timeout=10
+Commit message: "m"
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ git rev-parse --short HEAD
+[Pipeline] echo
+Building image tag: 15-0353bd7
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Build React App)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ cd react-trend-deployment
++ echo Building React application using Docker...
+Building React application using Docker...
++ pwd
++ docker run --rm -v /var/lib/jenkins/workspace/test/react-trend-deployment:/app -w /app node:22-alpine sh -c 
+                            echo 'Installing dependencies...'
+                            npm install
+                            echo 'Building React application...'
+                            npm run build
+                            echo 'Build complete!'
+                            ls -la dist/
+                        
+Installing dependencies...
+
+up to date, audited 15 packages in 1s
+
+5 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm notice
+npm notice New major version of npm available! 10.9.3 -> 11.6.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.6.0
+npm notice To update run: npm install -g npm@11.6.0
+npm notice
+Building React application...
+
+> react-trend-deployment@1.0.0 build
+> vite build
+
+vite v7.1.4 building for production...
+transforming...
+✓ 1 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html  0.06 kB │ gzip: 0.08 kB
+✓ built in 78ms
+Build complete!
+total 12
+drwxr-xr-x    2 root     root          4096 Sep  6 05:41 .
+drwxr-xr-x   10 115      122           4096 Sep  6 05:41 ..
+-rw-r--r--    1 root     root            64 Sep  6 05:41 index.html
++ echo Verifying build output on host:
+Verifying build output on host:
++ ls -la dist/
+total 12
+drwxr-xr-x  2 root    root    4096 Sep  6 05:41 .
+drwxr-xr-x 10 jenkins jenkins 4096 Sep  6 05:41 ..
+-rw-r--r--  1 root    root      64 Sep  6 05:41 index.html
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Build Docker Image)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ cd react-trend-deployment
++ echo Building Docker image...
+Building Docker image...
++ docker build -t suryapkh/trend-app:15-0353bd7 .
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 374B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/nginx:alpine
+#2 ...
+
+#3 [auth] library/nginx:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/nginx:alpine
+#2 DONE 0.6s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 139B done
+#4 DONE 0.0s
+
+#5 [1/3] FROM docker.io/library/nginx:alpine@sha256:42a516af16b852e33b7682d5ef8acbd5d13fe08fecadc7ed98605ba5e3b26ab8
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 1.51kB done
+#6 DONE 0.0s
+
+#7 [2/3] COPY dist/ /usr/share/nginx/html/
+#7 CACHED
+
+#8 [3/3] COPY nginx.conf /etc/nginx/nginx.conf
+#8 CACHED
+
+#9 exporting to image
+#9 exporting layers done
+#9 writing image sha256:6f15770a273a88770c76d8d2bd40a9d6387cd6ec73ed0b659a3258d52cf7a4a3 done
+#9 naming to docker.io/suryapkh/trend-app:15-0353bd7 done
+#9 DONE 0.0s
++ docker tag suryapkh/trend-app:15-0353bd7 suryapkh/trend-app:latest
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Push to Docker Hub)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] withCredentials
+Masking supported pattern matches of $DOCKER_PASS
+[Pipeline] {
+[Pipeline] sh
++ echo ****
++ docker login -u suryapkh --password-stdin
+Login Succeeded
++ docker push suryapkh/trend-app:15-0353bd7
+The push refers to repository [docker.io/suryapkh/trend-app]
+18df3cc1370d: Preparing
+95af5727a164: Preparing
+f9985d3fc94d: Preparing
+d208138be39d: Preparing
+a2b76470e8f1: Preparing
+917b2c97271e: Preparing
+16ca725632e5: Preparing
+7978a9c91f72: Preparing
+b6ff0212304e: Preparing
+418dccb7d85a: Preparing
+917b2c97271e: Waiting
+16ca725632e5: Waiting
+7978a9c91f72: Waiting
+b6ff0212304e: Waiting
+418dccb7d85a: Waiting
+95af5727a164: Layer already exists
+f9985d3fc94d: Layer already exists
+d208138be39d: Layer already exists
+18df3cc1370d: Layer already exists
+a2b76470e8f1: Layer already exists
+16ca725632e5: Layer already exists
+917b2c97271e: Layer already exists
+418dccb7d85a: Layer already exists
+7978a9c91f72: Layer already exists
+b6ff0212304e: Layer already exists
+15-0353bd7: digest: sha256:294e81c6cf7d1cc6b16a912184ef29a738aa9f554f356eac267c10aac62f4afd size: 2403
++ docker push suryapkh/trend-app:latest
+The push refers to repository [docker.io/suryapkh/trend-app]
+18df3cc1370d: Preparing
+95af5727a164: Preparing
+f9985d3fc94d: Preparing
+d208138be39d: Preparing
+a2b76470e8f1: Preparing
+917b2c97271e: Preparing
+16ca725632e5: Preparing
+7978a9c91f72: Preparing
+b6ff0212304e: Preparing
+418dccb7d85a: Preparing
+917b2c97271e: Waiting
+16ca725632e5: Waiting
+7978a9c91f72: Waiting
+b6ff0212304e: Waiting
+418dccb7d85a: Waiting
+18df3cc1370d: Layer already exists
+95af5727a164: Layer already exists
+f9985d3fc94d: Layer already exists
+d208138be39d: Layer already exists
+a2b76470e8f1: Layer already exists
+16ca725632e5: Layer already exists
+917b2c97271e: Layer already exists
+7978a9c91f72: Layer already exists
+b6ff0212304e: Layer already exists
+418dccb7d85a: Layer already exists
+latest: digest: sha256:294e81c6cf7d1cc6b16a912184ef29a738aa9f554f356eac267c10aac62f4afd size: 2403
+[Pipeline] }
+[Pipeline] // withCredentials
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Deploy to EKS)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] withCredentials
+Masking supported pattern matches of $AWS_ACCESS_KEY_ID or $AWS_SECRET_ACCESS_KEY
+[Pipeline] {
+[Pipeline] sh
++ export AWS_DEFAULT_REGION=us-west-2
++ echo 🚀 Deploying to EKS cluster...
+🚀 Deploying to EKS cluster...
++ aws configure list
+      Name                    Value             Type    Location
+      ----                    -----             ----    --------
+   profile                <not set>             None    None
+access_key     ****************PMM3              env    
+secret_key     ****************0F2d              env    
+    region                us-west-2              env    ['AWS_REGION', 'AWS_DEFAULT_REGION']
++ aws sts get-caller-identity
+{
+    "UserId": "AIDAVWDNCUWVIOAV3TCUG",
+    "Account": "391070786986",
+    "Arn": "arn:aws:iam::391070786986:user/redo"
+}
++ echo 🏢 Jenkins Instance Network Info:
+🏢 Jenkins Instance Network Info:
++ curl -s http://169.254.169.254/latest/meta-data/public-ipv4
+54.70.16.253+ curl -s http://169.254.169.254/latest/meta-data/vpc-id
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+		 "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+  <title>404 - Not Found</title>
+ </head>
+ <body>
+  <h1>404 - Not Found</h1>
+ </body>
+</html>
++ echo 🚀 EKS Cluster Network Info:
+🚀 EKS Cluster Network Info:
++ aws eks describe-cluster --name trend-app-cluster --query cluster.resourcesVpcConfig
+{
+    "subnetIds": [
+        "subnet-08c2208c1ddbc2a0e",
+        "subnet-06d1c5dbd6404b40a"
+    ],
+    "securityGroupIds": [
+        "sg-029b97cf66e756f53"
+    ],
+    "clusterSecurityGroupId": "sg-0d6d3d576e6e11ec4",
+    "vpcId": "vpc-0e4ce9c9d1f247933",
+    "endpointPublicAccess": true,
+    "endpointPrivateAccess": true,
+    "publicAccessCidrs": [
+        "0.0.0.0/0"
+    ]
+}
++ aws eks update-kubeconfig --name trend-app-cluster --region us-west-2
+Updated context arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster in /var/lib/jenkins/.kube/config
++ echo Testing network connectivity...
+Testing network connectivity...
++ CLUSTER_ENDPOINT=65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com
++ echo 🔍 Testing DNS resolution...
+🔍 Testing DNS resolution...
++ nslookup 65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com
+Server:		127.0.0.53
+Address:	127.0.0.53#53
+
+Non-authoritative answer:
+Name:	65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com
+Address: 10.0.2.222
+Name:	65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com
+Address: 10.0.1.161
+
++ echo 🔌 Testing TCP connectivity...
+🔌 Testing TCP connectivity...
++ nc -zv -w 10 65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com 443
+Connection to 65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com (10.0.2.222) 443 port [tcp/https] succeeded!
++ echo 🌐 Testing HTTPS connectivity...
+🌐 Testing HTTPS connectivity...
++ curl -v --max-time 15 https://65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 10.0.1.161:443...
+* Connected to 65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com (10.0.1.161) port 443 (#0)
+* ALPN, offering h2
+* ALPN, offering http/1.1
+*  CAfile: /etc/ssl/certs/ca-certificates.crt
+*  CApath: /etc/ssl/certs
+* TLSv1.0 (OUT), TLS header, Certificate Status (22):
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+* TLSv1.2 (IN), TLS header, Certificate Status (22):
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.2 (IN), TLS header, Finished (20):
+{ [5 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [15 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Request CERT (13):
+{ [105 bytes data]
+* TLSv1.2 (IN), TLS header, Supplemental data (23):
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [1032 bytes data]
+* TLSv1.2 (OUT), TLS header, Unknown (21):
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS alert, unknown CA (560):
+} [2 bytes data]
+* SSL certificate problem: unable to get local issuer certificate
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+* Closing connection 0
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+More details here: https://curl.se/docs/sslcerts.html
+
+curl failed to verify the legitimacy of the server and therefore could not
+establish a secure connection to it. To learn more about this situation and
+how to fix it, please visit the web page mentioned above.
++ true
++ echo 🔑 Testing kubectl configuration...
+🔑 Testing kubectl configuration...
++ kubectl version --client
+Client Version: v1.34.0
+Kustomize Version: v5.7.1
++ kubectl config view --minify
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://65CC5B2126D26BC4A49D56FFC0E626F9.gr7.us-west-2.eks.amazonaws.com
+  name: arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster
+contexts:
+- context:
+    cluster: arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster
+    user: arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster
+  name: arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster
+current-context: arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster
+kind: Config
+users:
+- name: arn:aws:eks:us-west-2:391070786986:cluster/trend-app-cluster
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - --region
+      - us-west-2
+      - eks
+      - get-token
+      - --cluster-name
+      - trend-app-cluster
+      - --output
+      - json
+      command: aws
+      env: null
+      interactiveMode: IfAvailable
+      provideClusterInfo: false
++ timeout 60 kubectl get nodes --request-timeout=45s
+NAME                                       STATUS   ROLES    AGE    VERSION
+ip-10-0-1-156.us-west-2.compute.internal   Ready    <none>   162m   v1.30.14-eks-3abbec1
+ip-10-0-2-20.us-west-2.compute.internal    Ready    <none>   162m   v1.30.14-eks-3abbec1
++ echo ✅ Cluster connectivity successful
+✅ Cluster connectivity successful
++ echo 🔄 Updating deployment with image: suryapkh/trend-app:15-0353bd7
+🔄 Updating deployment with image: suryapkh/trend-app:15-0353bd7
++ kubectl set image deployment/trend-app trend-app=suryapkh/trend-app:15-0353bd7 -n trend --request-timeout=30s
+deployment.apps/trend-app image updated
++ echo ⏳ Waiting for rollout to complete...
+⏳ Waiting for rollout to complete...
++ kubectl rollout status deployment/trend-app -n trend --timeout=180s
+Waiting for deployment "trend-app" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "trend-app" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "trend-app" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "trend-app" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "trend-app" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "trend-app" rollout to finish: 2 of 3 updated replicas are available...
+deployment "trend-app" successfully rolled out
++ echo 📊 Deployment status:
+📊 Deployment status:
++ kubectl get pods -n trend --request-timeout=10s
+NAME                        READY   STATUS    RESTARTS   AGE
+trend-app-84f85f449-5t465   1/1     Running   0          22s
+trend-app-84f85f449-jlhqd   1/1     Running   0          42s
+trend-app-84f85f449-tgv6n   1/1     Running   0          42s
++ kubectl get svc -n trend --request-timeout=10s
+NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP                                                                     PORT(S)          AGE
+trend-app-nodeport   NodePort       172.20.173.127   <none>                                                                          3000:30723/TCP   109m
+trend-app-service    LoadBalancer   172.20.50.225    a4f1b610166c64380892d34e44ac02e2-21bd06effebbaa26.elb.us-west-2.amazonaws.com   80:30654/TCP     109m
++ echo ✅ Deployment completed successfully!
+✅ Deployment completed successfully!
+[Pipeline] }
+[Pipeline] // withCredentials
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Health Check)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] withCredentials
+WARNING: Unknown parameter(s) found for class type 'com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentialsBinding': region
+Masking supported pattern matches of $AWS_ACCESS_KEY_ID or $AWS_SECRET_ACCESS_KEY
+[Pipeline] {
+[Pipeline] sh
++ kubectl get svc trend-app-service -n trend -o jsonpath={.status.loadBalancer.ingress[0].hostname}
++ LOAD_BALANCER_URL=a4f1b610166c64380892d34e44ac02e2-21bd06effebbaa26.elb.us-west-2.amazonaws.com
++ echo LoadBalancer URL: http://a4f1b610166c64380892d34e44ac02e2-21bd06effebbaa26.elb.us-west-2.amazonaws.com
+LoadBalancer URL: http://a4f1b610166c64380892d34e44ac02e2-21bd06effebbaa26.elb.us-west-2.amazonaws.com
++ echo Health check attempt {1..5}...
+Health check attempt {1..5}...
++ curl -f --max-time 10 http://a4f1b610166c64380892d34e44ac02e2-21bd06effebbaa26.elb.us-west-2.amazonaws.com
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100    64  100    64    0     0   9864      0 --:--:-- --:--:-- --:--:-- 10666
+<html><body><h1>Trend App - Production Ready</h1></body></html>
++ echo ✅ Application is healthy!
+✅ Application is healthy!
++ break
+[Pipeline] }
+[Pipeline] // withCredentials
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ docker rmi suryapkh/trend-app:15-0353bd7
+Untagged: suryapkh/trend-app:15-0353bd7
++ docker system prune -f
+Deleted Images:
+untagged: suryapkh/trend-app@sha256:a4d0ded8dab1006bfe7909c50af9521d4da18242bd6c784256c966996fdbadf8
+deleted: sha256:08123c7ac73446f89b41045c4f73cfd53c5466a186cf32082d5656b7b26f0526
+
+Deleted build cache objects:
+guftwakgdc08lk4bsc8dz76vg
+u43epsk47371tc53ad24vo6uz
+a2umjzttgaw2cg42ddqfchrth
+
+Total reclaimed space: 1.83kB
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] echo
+🎉 Pipeline succeeded! Application deployed successfully.
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ echo ✅ Deployment Summary:
+✅ Deployment Summary:
++ echo 🔗 Application URL: http://a33f4d4d9655c4121a50242bb0a3942b-321113.us-west-2.elb.amazonaws.com
+🔗 Application URL: http://a33f4d4d9655c4121a50242bb0a3942b-321113.us-west-2.elb.amazonaws.com
++ echo 🐳 Docker Image: suryapkh/trend-app:15-0353bd7
+🐳 Docker Image: suryapkh/trend-app:15-0353bd7
++ echo 📊 Monitoring: http://34.210.247.74:3000
+📊 Monitoring: http://34.210.247.74:3000
++ echo 📂 Repository: https://github.com/Surya-pkh/Projects/tree/main/react-trend-deployment
+📂 Repository: https://github.com/Surya-pkh/Projects/tree/main/react-trend-deployment
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+Finished: SUCCESS
